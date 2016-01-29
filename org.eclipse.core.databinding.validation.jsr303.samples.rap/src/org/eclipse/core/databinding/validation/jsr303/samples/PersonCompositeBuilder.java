@@ -34,6 +34,15 @@ public class PersonCompositeBuilder extends CompositeBuilder {
         createLabelWithText( compositeForm, PersonFieldDescriptor.FIELD_FAXNR );
         createLabelWithDate( compositeForm, PersonFieldDescriptor.FIELD_BIRTHDATE );
 
+        createLabelWithText( compositeForm, PersonFieldDescriptor.FIELD_SHIPPINGADDRESS + "."
+                        + PersonFieldDescriptor.FIELD_STREET );
+        createLabelWithText( compositeForm, PersonFieldDescriptor.FIELD_SHIPPINGADDRESS + "."
+                        + PersonFieldDescriptor.FIELD_NUMBER );
+        createLabelWithText( compositeForm, PersonFieldDescriptor.FIELD_SHIPPINGADDRESS + "."
+                        + PersonFieldDescriptor.FIELD_POSTALCODE );
+        createLabelWithText( compositeForm, PersonFieldDescriptor.FIELD_SHIPPINGADDRESS + "."
+                        + PersonFieldDescriptor.FIELD_CITY );
+
         return compositeForm;
     }
 

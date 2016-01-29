@@ -159,7 +159,7 @@ public class Jsr303DatabindingMetadataBuilder {
     public void bind(DataBindingContext databindingContext, Object pojo) {
         Class< ? > modelType = (Class< ? >) this.m_oWritableValue.getValueType();
         if ( modelType.isAssignableFrom( pojo.getClass() ) ) {
-            this.m_oWritableValue.setValue( pojo );
+            // this.m_oWritableValue.setValue( pojo );
         }
         else {
             throw new IllegalArgumentException(

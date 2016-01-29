@@ -21,7 +21,7 @@ public class PostalCodeValidator implements ConstraintValidator< PostalCode, Str
     }
 
     public boolean isValid(String object, ConstraintValidatorContext constraintContext) {
-        if ( object == null ) {
+        if ( ( object == null ) || object.isEmpty() ) {
             return true;
         }
 

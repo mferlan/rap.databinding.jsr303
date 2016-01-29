@@ -16,11 +16,12 @@ public class Address {
     // housenumber
     @NotNull(groups = MainAddress.class)
     @NotBlank(groups = MainAddress.class)
-    @Pattern(regexp = "^\\d+[a-zA-Z]*$")
+    @Pattern(regexp = "^\\d*[a-zA-Z]*$")
     private String number;
 
     // postal code
     @NotNull(groups = MainAddress.class)
+    @NotBlank(groups = MainAddress.class)
     @PostalCode
     private String postalCode;
 
