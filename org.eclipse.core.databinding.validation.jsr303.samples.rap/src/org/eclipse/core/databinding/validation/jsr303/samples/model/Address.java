@@ -7,22 +7,29 @@ import org.eclipse.core.databinding.validation.jsr303.samples.util.PostalCode;
 import org.hibernate.validator.constraints.NotBlank;
 
 public class Address {
-
-    @NotNull
-    @NotBlank
+    // street
+    @NotNull(groups = MainAddress.class)
+    @NotBlank(groups = MainAddress.class)
     @Pattern(regexp = "[a-z-A-Z]*")
     private String street;
-    @NotNull
-    @NotBlank
+
+    // housenumber
+    @NotNull(groups = MainAddress.class)
+    @NotBlank(groups = MainAddress.class)
     @Pattern(regexp = "^\\d+[a-zA-Z]*$")
     private String number;
-    @NotNull
+
+    // postal code
+    @NotNull(groups = MainAddress.class)
     @PostalCode
     private String postalCode;
-    @NotNull
-    @NotBlank
+
+    // city
+    @NotNull(groups = MainAddress.class)
+    @NotBlank(groups = MainAddress.class)
     @Pattern(regexp = "[a-z-A-Z]*")
     private String city;
+
     @Pattern(regexp = "[a-z-A-Z]*")
     private String country;
 

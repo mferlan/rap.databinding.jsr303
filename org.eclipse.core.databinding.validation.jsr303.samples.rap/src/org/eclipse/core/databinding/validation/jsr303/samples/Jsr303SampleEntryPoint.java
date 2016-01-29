@@ -2,11 +2,11 @@ package org.eclipse.core.databinding.validation.jsr303.samples;
 
 import org.eclipse.core.databinding.DataBindingContext;
 import org.eclipse.core.databinding.observable.Realm;
-import org.eclipse.core.databinding.observable.value.WritableValue;
 import org.eclipse.core.databinding.validation.jsr303.samples.model.Address;
+import org.eclipse.core.databinding.validation.jsr303.samples.model.MainAddress;
 import org.eclipse.core.databinding.validation.jsr303.samples.model.Person;
 import org.eclipse.core.databinding.validation.jsr303.samples.model.PersonFieldDescriptor;
-import org.eclipse.core.databinding.validation.jsr303.samples.util.Jsr303BindSupport;
+import org.eclipse.core.databinding.validation.jsr303.samples.util.Jsr303DatabindingMetadataBuilder;
 import org.eclipse.core.databinding.validation.jsr303.samples.util.Jsr303RequiredControlDecoratorSupport;
 import org.eclipse.core.databinding.validation.jsr303.samples.util.ResourceBundleMessageApplier;
 import org.eclipse.core.databinding.validation.jsr303.samples.util.UIControlContainer;
@@ -19,7 +19,6 @@ import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
-import org.eclipse.swt.widgets.Display;
 
 public class Jsr303SampleEntryPoint extends AbstractEntryPoint {
 
@@ -30,56 +29,61 @@ public class Jsr303SampleEntryPoint extends AbstractEntryPoint {
 
     @Override
     protected void createContents(Composite shell) {
-        Display display = getShell().getDisplay();
-
-        Realm realm = SWTObservables.getRealm( display );
-        DataBindingContext dataBindingContext = new DataBindingContext( realm );
 
         // UI
-        Composite parent = new Composite( shell, SWT.NONE );
-        parent.setLayout( new GridLayout( 2, false ) );
-        parent.setLayoutData( new GridData( GridData.FILL_BOTH ) );
-        PersonCompositeBuilder builder = new PersonCompositeBuilder();
-        builder.createContent( parent );
-        UIControlContainer uiControlContainer = builder.getUiControlContainer();
-
-        SaveButtonCompositeBuilder buttonBuilder = new SaveButtonCompositeBuilder(
-                        uiControlContainer );
-        Composite buttonComposite = buttonBuilder.createContent( parent );
-        buttonComposite.setLayoutData( new GridData( GridData.FILL_HORIZONTAL ) );
+        UIControlContainer uiControlContainer = createView( shell );
 
         // MODEL
-        WritableValue value = new org.eclipse.core.databinding.observable.value.WritableValue(
-                        realm, null, Person.class );
         final Person model = new Person();
         model.setAddress( new Address() );
 
-        value.setValue( model );
         // CONTROLLER
 
+        createController( uiControlContainer, model );
+
+    }
+
+    /**
+     *
+     * @param uiControlContainer
+     * @param model
+     */
+    private void createController(UIControlContainer uiControlContainer, final Person model) {
+        Realm realm = SWTObservables.getRealm( getShell().getDisplay() );
+        DataBindingContext dataBindingContext = new DataBindingContext( realm );
         // mark labels of controls as required
         Jsr303RequiredControlDecoratorSupport.create( uiControlContainer, Person.class, true,
                         SWT.TOP | SWT.RIGHT );
 
-        // bind ui to pojo
-        // Jsr303BindSupport.bindPojo( dataBindingContext, uiControlContainer, model,
-        // SWT.TOP | SWT.RIGHT );
-        // bind ui to writeable value
-        Jsr303BindSupport.bindWriteableValue( dataBindingContext, uiControlContainer, value,
-                        SWT.TOP | SWT.RIGHT );
+        /*
+         * generating and configuring information used for databinding
+         */
+        Jsr303DatabindingMetadataBuilder databindingBuilder = new Jsr303DatabindingMetadataBuilder(
+                        realm, uiControlContainer, Person.class );
+        databindingBuilder.buildMetadata();
+
+        long time = System.currentTimeMillis();
+        databindingBuilder.applyValidationGroup( PersonFieldDescriptor.FIELD_ADDRESS,
+                        MainAddress.class );
+        System.out.println( "Time  " + ( System.currentTimeMillis() - time ) );
+
+        // binding done
+        databindingBuilder.bind( dataBindingContext, model );
 
         // apply localized messages
         ResourceBundleMessageApplier.applyTextToLabels( getClass().getClassLoader(),
                         uiControlContainer, "person" );
+
         // add items to combo salution
         Combo combo = uiControlContainer.getControl( PersonFieldDescriptor.FIELD_SALUTATION,
                         Combo.class );
         combo.add( "Mrs." );
         combo.add( "Ms." );
 
-        // bind enable save button to aggregated status in databinding
         Button saveButton = uiControlContainer.getControl( "save" );
-        Jsr303BindSupport.bindEnabledToAggregateStatus( dataBindingContext, saveButton );
+        // bind enable save button to aggregated status in databinding
+        Jsr303DatabindingMetadataBuilder.bindEnabledToAggregateStatus( dataBindingContext,
+                        saveButton );
 
         saveButton.addSelectionListener( new SelectionAdapter() {
 
@@ -93,7 +97,26 @@ public class Jsr303SampleEntryPoint extends AbstractEntryPoint {
                 System.out.println( model );
             };
         } );
+    }
 
+    /**
+     *
+     * @param shell
+     * @return
+     */
+    private UIControlContainer createView(Composite shell) {
+        Composite parent = new Composite( shell, SWT.NONE );
+        parent.setLayout( new GridLayout( 2, false ) );
+        parent.setLayoutData( new GridData( GridData.FILL_BOTH ) );
+        PersonCompositeBuilder builder = new PersonCompositeBuilder();
+        builder.createContent( parent );
+        UIControlContainer uiControlContainer = builder.getUiControlContainer();
+
+        SaveButtonCompositeBuilder buttonBuilder = new SaveButtonCompositeBuilder(
+                        uiControlContainer );
+        Composite buttonComposite = buttonBuilder.createContent( parent );
+        buttonComposite.setLayoutData( new GridData( GridData.FILL_HORIZONTAL ) );
+        return uiControlContainer;
     }
 
 }

@@ -28,6 +28,13 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Text;
 import org.slf4j.LoggerFactory;
 
+/**
+ * use {@link Jsr303DatabindingMetadataBuilder}
+ * 
+ * @author mferlan
+ *
+ */
+@Deprecated
 public class Jsr303BindSupport {
 
     /**
