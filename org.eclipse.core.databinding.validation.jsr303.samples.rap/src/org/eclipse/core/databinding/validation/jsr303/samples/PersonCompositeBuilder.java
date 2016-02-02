@@ -1,6 +1,7 @@
 package org.eclipse.core.databinding.validation.jsr303.samples;
 
 import org.eclipse.core.databinding.validation.jsr303.samples.model.PersonFieldDescriptor;
+import org.eclipse.core.databinding.validation.jsr303.samples.util.UIControlContainer;
 import org.eclipse.swt.widgets.Composite;
 
 import net.miginfocom.swt.MigLayout;
@@ -11,6 +12,14 @@ import net.miginfocom.swt.MigLayout;
  *
  */
 public class PersonCompositeBuilder extends CompositeBuilder {
+    public PersonCompositeBuilder() {
+        super();
+    }
+
+    public PersonCompositeBuilder(UIControlContainer oUiControlContainer) {
+        super( oUiControlContainer );
+    }
+
     @Override
     public Composite createContent(Composite parent) {
         Composite compositeForm = createFormComposite( parent );

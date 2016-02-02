@@ -19,6 +19,12 @@ public class UIControlContainer {
         return this.m_mapId2control.keySet();
     }
 
+    public void merge(String prefix, UIControlContainer uiContainer) {
+        for ( String key : uiContainer.keySet() ) {
+            put( prefix + "." + key, uiContainer.getControl( key ) );
+        }
+    }
+
     public Object put(String bindingProperty, Object control) {
         if ( this.m_mapId2control.containsKey( bindingProperty ) ) {
             final String format = "conflict: control with id '%s' already defined: %s, %s"; //$NON-NLS-1$

@@ -16,9 +16,13 @@ import org.eclipse.core.databinding.AggregateValidationStatus;
 import org.eclipse.core.databinding.Binding;
 import org.eclipse.core.databinding.DataBindingContext;
 import org.eclipse.core.databinding.UpdateValueStrategy;
+import org.eclipse.core.databinding.ValidationStatusProvider;
 import org.eclipse.core.databinding.beans.IBeanObservable;
 import org.eclipse.core.databinding.beans.IBeanValueProperty;
 import org.eclipse.core.databinding.beans.PojoProperties;
+import org.eclipse.core.databinding.decoration.ControlUpdater;
+import org.eclipse.core.databinding.decoration.DecorationControlUpdater;
+import org.eclipse.core.databinding.decoration.UpdateControlSupport;
 import org.eclipse.core.databinding.observable.Realm;
 import org.eclipse.core.databinding.observable.list.IObservableList;
 import org.eclipse.core.databinding.observable.value.IObservableValue;
@@ -27,7 +31,6 @@ import org.eclipse.core.databinding.validation.IValidator;
 import org.eclipse.core.databinding.validation.jsr303.Jsr303PropertyValidationSupport;
 import org.eclipse.core.databinding.validation.jsr303.Jsr303PropertyValidator;
 import org.eclipse.core.databinding.validation.jsr303.Jsr303UpdateValueStrategyFactory;
-import org.eclipse.jface.databinding.fieldassist.ControlDecorationSupport;
 import org.eclipse.jface.databinding.swt.WidgetProperties;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.CCombo;
@@ -39,7 +42,7 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Text;
 import org.slf4j.LoggerFactory;
 
-public class Jsr303DatabindingMetadataBuilder {
+public class Jsr303DatabindingConfigurator {
 
     /**
      *
@@ -63,32 +66,73 @@ public class Jsr303DatabindingMetadataBuilder {
         bindValue.updateTargetToModel();
     }
 
-    private Map< String, DatabindingMetadata > m_mapMetadata;
+    private Map< String, DatabindingConfiguration > m_mapConfiguration;
     private UIControlContainer m_oUiContainer;
     private Class< ? > m_classPojo;
     private Realm m_oRealm;
 
     private WritableValue m_oWritableValue;
+    private Class< ? >[] validationGroups;
+    private Map< String, Class< ? >[] > mapValidationGroups;
+    private Map< String, ValidationStatusProvider > mapExtraValidationStatusProvier;
+    private boolean initialized = false;
 
-    public Jsr303DatabindingMetadataBuilder(Realm realm, UIControlContainer oUiContainer,
-                                            Class< ? > oPojoClass) {
+    public Jsr303DatabindingConfigurator(Realm realm, UIControlContainer oUiContainer,
+                                         Class< ? > oPojoClass) {
         super();
         this.m_oRealm = realm;
         this.m_oUiContainer = oUiContainer;
         this.m_classPojo = oPojoClass;
         Set< String > setPojoProperties = filter( oUiContainer.keySet(), oPojoClass );
-        this.m_mapMetadata = new HashMap< String, DatabindingMetadata >( setPojoProperties.size() );
+        this.m_mapConfiguration = new HashMap< String, DatabindingConfiguration >(
+                        setPojoProperties.size() );
         for ( String property : setPojoProperties ) {
-            this.m_mapMetadata.put( property, new DatabindingMetadata( realm ) );
+            this.m_mapConfiguration.put( property, new DatabindingConfiguration( realm ) );
         }
         this.m_oWritableValue = new WritableValue( this.m_oRealm, null, this.m_classPojo );
+        this.mapValidationGroups = new HashMap< String, Class< ? >[] >();
+        this.mapExtraValidationStatusProvier = new HashMap< String, ValidationStatusProvider >();
     }
 
-    public void applyValidationGroup(Class< ? >... validationGroups) {
+    /**
+     * This method invocation will invoke {@link #initialize()} method.
+     * FieldMatchesDatabindingValidator requires target observable for properties passed as
+     * arguments
+     *
+     * @param firstProperty
+     * @param secondProperty
+     */
+    public void addFieldMatchValidation(String firstProperty, String secondProperty) {
+        if ( !this.initialized ) {
+            initialize();
+        }
+        ValidationStatusProvider provider = new FieldMatchesDatabindingValidator(
+                        getTargetObservable( firstProperty ),
+                        getTargetObservable( secondProperty ) );
+        addValidationStatusProvider( firstProperty, provider );
+        addValidationStatusProvider( secondProperty, provider );
+    }
+
+    public void addValidationStatusProvider(String key, ValidationStatusProvider provider) {
+        this.mapExtraValidationStatusProvier.put( key, provider );
+    }
+
+    /**
+     * TODO: see if needed
+     *
+     * @param validationGroups
+     */
+    private void applyValidationGroup(Class< ? >... validationGroups) {
         applyValidationGroup( null, validationGroups );
     }
 
-    public void applyValidationGroup(String propertyPath, Class< ? >... validationGroups) {
+    /**
+     * TODO: see if needed
+     *
+     * @param propertyPath
+     * @param validationGroups
+     */
+    private void applyValidationGroup(String propertyPath, Class< ? >... validationGroups) {
         final Validator jsr303Validator = Jsr303PropertyValidationSupport.getValidatorFactory()
                         .getValidator();
 
@@ -139,11 +183,11 @@ public class Jsr303DatabindingMetadataBuilder {
                                 .findConstraints().unorderedAndMatchingGroups( validationGroups )
                                 .getConstraintDescriptors();
                 if ( !constraints.isEmpty() ) {
-                    final DatabindingMetadata metadata = getMetadata( uiBinding );
+                    final DatabindingConfiguration config = getConfiguration( uiBinding );
                     final IValidator validator = new Jsr303PropertyValidator(
                                     beanDescriptor.getElementClass(),
                                     propertyDescriptor.getPropertyName(), true, validationGroups );
-                    metadata.getUpdateValueStrategy().setAfterConvertValidator( validator );
+                    config.getUpdateValueStrategy().setAfterConvertValidator( validator );
                 }
 
             }
@@ -151,43 +195,55 @@ public class Jsr303DatabindingMetadataBuilder {
         }
     }
 
+    public Map< String, Binding > bind(DataBindingContext databindingContext, Object pojo) {
+        return bind( databindingContext, pojo,
+                        new DecorationControlUpdater( SWT.TOP | SWT.RIGHT ) );
+    }
+
     /**
      *
      * @param databindingContext
      * @param pojo
+     * @return
      */
-    public void bind(DataBindingContext databindingContext, Object pojo) {
+    public Map< String, Binding > bind(DataBindingContext databindingContext, Object pojo,
+                                       ControlUpdater controlUpdater) {
+        if ( !this.initialized ) {
+            initialize();
+        }
+        Map< String, Binding > mapBindings = new HashMap< String, Binding >();
         Class< ? > modelType = (Class< ? >) this.m_oWritableValue.getValueType();
         if ( modelType.isAssignableFrom( pojo.getClass() ) ) {
-            // this.m_oWritableValue.setValue( pojo );
+            this.m_oWritableValue.setValue( pojo );
         }
         else {
             throw new IllegalArgumentException(
                             "Model " + pojo + " does not match declared model type" + modelType );
         }
-        for ( Entry< String, DatabindingMetadata > entry : this.m_mapMetadata.entrySet() ) {
-            DatabindingMetadata metadata = entry.getValue();
-            Binding binding = databindingContext.bindValue( metadata.getTargetObservable(),
-                            metadata.getModelObservable(), metadata.getUpdateValueStrategy(),
-                            null );
-            if ( metadata.getControlDecoratorLocation() != SWT.NONE ) {
-                ControlDecorationSupport.create( binding, metadata.getControlDecoratorLocation() );
+        for ( Entry< String, DatabindingConfiguration > entry : this.m_mapConfiguration
+                        .entrySet() ) {
+            String propertyPath = entry.getKey();
+            DatabindingConfiguration config = entry.getValue();
+            Binding binding = databindingContext.bindValue( config.getTargetObservable(),
+                            config.getModelObservable(), config.getUpdateValueStrategy(), null );
+            mapBindings.put( propertyPath, binding );
+
+            if ( controlUpdater != null ) {
+                final ValidationStatusProvider controlValidationStatusProvider;
+                if ( this.mapExtraValidationStatusProvier.containsKey( propertyPath ) ) {
+                    controlValidationStatusProvider = new AggregateValidationStatusProvider(
+                                    binding,
+                                    this.mapExtraValidationStatusProvier.get( propertyPath ) );
+                }
+                else {
+                    controlValidationStatusProvider = binding;
+                }
+                UpdateControlSupport.create( controlValidationStatusProvider, controlUpdater );
             }
         }
 
-    }
+        return mapBindings;
 
-    /**
-     *
-     */
-    public void buildMetadata() {
-        for ( Entry< String, DatabindingMetadata > entry : this.m_mapMetadata.entrySet() ) {
-            String pojoProperty = entry.getKey();
-            DatabindingMetadata metadata = entry.getValue();
-            buildTarget( pojoProperty, metadata );
-            buildModel( pojoProperty, metadata );
-            buildStrategy( pojoProperty, metadata );
-        }
     }
 
     /**
@@ -195,7 +251,7 @@ public class Jsr303DatabindingMetadataBuilder {
      * @param pojoProperty
      * @param metadata
      */
-    protected void buildModel(String pojoProperty, DatabindingMetadata metadata) {
+    protected void buildModel(String pojoProperty, DatabindingConfiguration metadata) {
         IBeanValueProperty beanValueProperty = PojoProperties.value( pojoProperty );
         IObservableValue model = beanValueProperty.observeDetail( this.m_oWritableValue );
         metadata.setModelObservable( model );
@@ -206,51 +262,87 @@ public class Jsr303DatabindingMetadataBuilder {
      * @param pojoProperty
      * @param metadata
      */
-    protected void buildStrategy(String pojoProperty, DatabindingMetadata metadata) {
+    protected void buildStrategy(String pojoProperty, DatabindingConfiguration metadata) {
         IBeanObservable modelObservable = (IBeanObservable) metadata.getModelObservable();
         final Class< ? > beanType;
-        if ( modelObservable.getObserved() == null ) {
-            // connect them
-            if ( pojoProperty.contains( "." ) ) {
-                String pojoField = pojoProperty.substring( 0, pojoProperty.lastIndexOf( '.' ) );
-                try {
-                    Field field = this.m_classPojo.getDeclaredField( pojoField );
-                    beanType = field.getType();
-                }
-                catch ( NoSuchFieldException e ) {
-                    throw new IllegalArgumentException(
-                                    pojoField + " cannot be found in " + this.m_classPojo, e );
-                }
-                catch ( SecurityException e ) {
-                    throw new IllegalArgumentException(
-                                    pojoField + " cannot be found in " + this.m_classPojo, e );
-                }
-            }
-            else {
-                beanType = this.m_classPojo;
-            }
-        }
-        else {
+        final String beanPropertyName;
+
+        if ( ( modelObservable.getObserved() != null )
+                        && ( modelObservable.getPropertyDescriptor() != null ) ) {
+            // model observable contains bean type and proper property name
+            beanPropertyName = modelObservable.getPropertyDescriptor().getName();
             beanType = modelObservable.getObserved().getClass();
         }
-
-        final String beanPropertyName;
-        if ( modelObservable.getPropertyDescriptor() != null ) {
-            beanPropertyName = modelObservable.getPropertyDescriptor().getName();
-        }
         else {
-            // connect them
+            // one information cannot be discovered from model observable. calculate based on
+            // propretypath and pojo class
+            final Class< ? > calculatedBeanType;
+            final String calculatedPropertyName;
             if ( pojoProperty.contains( "." ) ) {
-                beanPropertyName = pojoProperty.substring( pojoProperty.lastIndexOf( '.' ) + 1,
-                                pojoProperty.length() );
+                String[] splitt = pojoProperty.split( "\\." );
+                String fieldName = null;
+                Class< ? extends Object > innerPojoClass = this.m_classPojo;
+                for ( int i = 0; i < ( splitt.length ); i++ ) {
+                    fieldName = splitt[ i ];
+                    try {
+                        Field field = innerPojoClass.getDeclaredField( fieldName );
+                        Class< ? > fieldClass = field.getType();
+                        // last entry
+                        if ( i != ( splitt.length - 1 ) ) {
+                            innerPojoClass = fieldClass;
+                        }
+                    }
+                    catch ( NoSuchFieldException e ) {
+                        throw new IllegalArgumentException(
+                                        fieldName + " cannot be found in " + innerPojoClass, e );
+                    }
+                    catch ( SecurityException e ) {
+                        throw new IllegalArgumentException(
+                                        fieldName + " cannot be found in " + innerPojoClass, e );
+                    }
+                }
+                if ( fieldName == null ) {
+                    throw new IllegalArgumentException(
+                                    pojoProperty + " cannot be found in " + this.m_classPojo );
+                }
+                calculatedBeanType = innerPojoClass;
+                calculatedPropertyName = fieldName;
             }
             else {
-                beanPropertyName = pojoProperty;
+                calculatedBeanType = this.m_classPojo;
+                calculatedPropertyName = pojoProperty;
+            }
+
+            if ( modelObservable.getObserved() == null ) {
+                beanType = calculatedBeanType;
+            }
+            else {
+                beanType = modelObservable.getObserved().getClass();
+            }
+
+            if ( modelObservable.getPropertyDescriptor() != null ) {
+                beanPropertyName = modelObservable.getPropertyDescriptor().getName();
+            }
+            else {
+                beanPropertyName = calculatedPropertyName;
             }
         }
 
-        metadata.setUpdateValueStrategy( Jsr303UpdateValueStrategyFactory.create( beanType,
-                        beanPropertyName, false ) );
+        Class< ? >[] beanValidationGroups = this.validationGroups;
+        for ( String prefix : this.mapValidationGroups.keySet() ) {
+            if ( pojoProperty.startsWith( prefix + "." ) ) {
+                beanValidationGroups = this.mapValidationGroups.get( prefix );
+                break;
+            }
+        }
+        if ( beanValidationGroups == null ) {
+            metadata.setUpdateValueStrategy( Jsr303UpdateValueStrategyFactory.create( beanType,
+                            beanPropertyName, false ) );
+        }
+        else {
+            metadata.setUpdateValueStrategy( Jsr303UpdateValueStrategyFactory.create( beanType,
+                            beanPropertyName, false, beanValidationGroups ) );
+        }
     }
 
     /**
@@ -258,7 +350,7 @@ public class Jsr303DatabindingMetadataBuilder {
      * @param pojoProperty
      * @param metadata
      */
-    protected void buildTarget(String pojoProperty, DatabindingMetadata metadata) {
+    protected void buildTarget(String pojoProperty, DatabindingConfiguration metadata) {
         Object control = this.m_oUiContainer.getControl( pojoProperty );
         IObservableValue target = null;
         if ( control instanceof Control ) {
@@ -279,7 +371,7 @@ public class Jsr303DatabindingMetadataBuilder {
 
         }
         else {
-            LoggerFactory.getLogger( Jsr303BindSupport.class ).debug(
+            LoggerFactory.getLogger( Jsr303DatabindingConfigurator.class ).debug(
                             control.getClass() + " not supported for property  " + pojoProperty );
             // do nothing
         }
@@ -290,9 +382,10 @@ public class Jsr303DatabindingMetadataBuilder {
      *
      */
     protected void buildTargets() {
-        for ( Entry< String, DatabindingMetadata > entry : this.m_mapMetadata.entrySet() ) {
+        for ( Entry< String, DatabindingConfiguration > entry : this.m_mapConfiguration
+                        .entrySet() ) {
             String pojoProperty = entry.getKey();
-            DatabindingMetadata metadata = entry.getValue();
+            DatabindingConfiguration metadata = entry.getValue();
             buildTarget( pojoProperty, metadata );
         }
     }
@@ -307,25 +400,26 @@ public class Jsr303DatabindingMetadataBuilder {
     protected Set< String > filter(Set< String > setBindingProperties,
                                    Class< ? extends Object > pojoClass) {
         Set< String > filtered = new HashSet< String >();
+        outer:
         for ( String bindingProperty : setBindingProperties ) {
             if ( bindingProperty.contains( "." ) ) {
                 String[] splitt = bindingProperty.split( "\\." );
-                if ( splitt.length == 2 ) {
-                    String fieldName = splitt[ 0 ];
+                Class< ? extends Object > innerPojoClass = pojoClass;
+                for ( String fieldName : splitt ) {
                     try {
-                        Field field = pojoClass.getDeclaredField( fieldName );
+                        Field field = innerPojoClass.getDeclaredField( fieldName );
                         Class< ? > fieldClass = field.getType();
-                        Field innerField = fieldClass.getDeclaredField( splitt[ 1 ] );
-                        filtered.add( bindingProperty );
+                        innerPojoClass = fieldClass;
                     }
                     catch ( NoSuchFieldException e ) {
                         // ignore
+                        continue outer;
                     }
                     catch ( SecurityException e ) {
-                        throw new RuntimeException( "Unable to inspect " + pojoClass, e );
+                        throw new RuntimeException( "Unable to inspect " + innerPojoClass, e );
                     }
                 }
-
+                filtered.add( bindingProperty );
             }
             else {
                 try {
@@ -343,8 +437,8 @@ public class Jsr303DatabindingMetadataBuilder {
         return filtered;
     }
 
-    public DatabindingMetadata getMetadata(String pojoProperty) {
-        return this.m_mapMetadata.get( pojoProperty );
+    public DatabindingConfiguration getConfiguration(String pojoProperty) {
+        return this.m_mapConfiguration.get( pojoProperty );
     }
 
     public Class< ? > getPojoType() {
@@ -355,8 +449,41 @@ public class Jsr303DatabindingMetadataBuilder {
         return this.m_oRealm;
     }
 
+    public IObservableValue getTargetObservable(String pojoProperty) {
+        DatabindingConfiguration databindingMetadata = this.m_mapConfiguration.get( pojoProperty );
+        if ( databindingMetadata == null ) {
+            throw new IllegalArgumentException(
+                            "Databinding information cannot be found for property "
+                                            + pojoProperty );
+        }
+        return databindingMetadata.getTargetObservable();
+    }
+
+    /**
+     *
+     */
+    public void initialize() {
+        for ( Entry< String, DatabindingConfiguration > entry : this.m_mapConfiguration
+                        .entrySet() ) {
+            String pojoProperty = entry.getKey();
+            DatabindingConfiguration config = entry.getValue();
+            buildTarget( pojoProperty, config );
+            buildModel( pojoProperty, config );
+            buildStrategy( pojoProperty, config );
+        }
+        this.initialized = true;
+    }
+
     public Set< String > keySet() {
-        return this.m_mapMetadata.keySet();
+        return this.m_mapConfiguration.keySet();
+    }
+
+    public void setValidationGroup(String propertyPath, Class< ? >... validationGroups) {
+        this.mapValidationGroups.put( propertyPath, validationGroups );
+    }
+
+    public void setValidationGroups(Class< ? >[] oValidationGroups) {
+        this.validationGroups = oValidationGroups;
     }
 
 }

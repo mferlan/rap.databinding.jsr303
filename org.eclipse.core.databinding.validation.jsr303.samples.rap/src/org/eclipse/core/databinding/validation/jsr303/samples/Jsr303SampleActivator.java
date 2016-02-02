@@ -29,7 +29,10 @@ public class Jsr303SampleActivator implements BundleActivator {
 
             application.setOperationMode( OperationMode.SWT_COMPATIBILITY );
 
-            application.addEntryPoint( "/", Jsr303SampleEntryPoint.class, properties );
+            application.addEntryPoint( "/", Jsr303InitialEntryPoint.class, properties );
+            application.addEntryPoint( "/person", Jsr303PersonEntryPoint.class, properties );
+            application.addEntryPoint( "/registration", Jsr303RegistrationEntryPoint2.class,
+                            properties );
             application.setExceptionHandler( new Jsr303SampleExceptionHandler() );
 
             MessageInterpolator messageInterpolator;

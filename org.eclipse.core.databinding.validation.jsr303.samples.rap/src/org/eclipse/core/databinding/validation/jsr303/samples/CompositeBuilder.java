@@ -60,9 +60,13 @@ public abstract class CompositeBuilder {
     }
 
     protected void createLabelWithText(Composite composite, String bindingId) {
+        createLabelWithText( composite, bindingId, SWT.BORDER );
+    }
+
+    protected void createLabelWithText(Composite composite, String bindingId, int textStyle) {
         Label lbl = new Label( composite, SWT.NONE );
         lbl.setText( bindingId );
-        Text txt = new Text( composite, SWT.BORDER );
+        Text txt = new Text( composite, textStyle );
         addUIControl( txt, bindingId );
         addUILabel( lbl, bindingId );
     }

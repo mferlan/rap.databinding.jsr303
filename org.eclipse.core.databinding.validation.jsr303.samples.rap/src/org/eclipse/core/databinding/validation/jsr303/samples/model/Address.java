@@ -2,11 +2,18 @@ package org.eclipse.core.databinding.validation.jsr303.samples.model;
 
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Pattern;
+import javax.validation.groups.Default;
 
-import org.eclipse.core.databinding.validation.jsr303.samples.util.PostalCode;
 import org.hibernate.validator.constraints.NotBlank;
 
 public class Address {
+
+    public interface FiveDigitPostalCode extends Default {
+    }
+
+    public interface MainAddress extends Default {
+    }
+
     // street
     @NotNull(groups = MainAddress.class)
     @NotBlank(groups = MainAddress.class)
@@ -22,7 +29,10 @@ public class Address {
     // postal code
     @NotNull(groups = MainAddress.class)
     @NotBlank(groups = MainAddress.class)
-    @PostalCode
+    @Pattern.List({ //
+                    @Pattern(regexp = "^([a-zA-Z0-9\\s]{2,5})?$", groups = Default.class, message = "{de.atron.constraints.postalcode}"), //
+                    @Pattern(regexp = "^([0-9]{5})?$", groups = FiveDigitPostalCode.class, message = "{de.atron.constraints.postalcode.fivedigit}") //
+    })
     private String postalCode;
 
     // city

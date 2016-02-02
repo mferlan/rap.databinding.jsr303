@@ -20,7 +20,6 @@ public class ResourceBundleMessageApplier {
         }
         catch ( MissingResourceException e ) {
             // ignore
-            WidgetProperties.text().setValue( control, messageKey );
         }
     }
 
